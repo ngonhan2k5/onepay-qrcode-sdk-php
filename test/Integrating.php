@@ -6,5 +6,6 @@
  * Time: 12:42 AM
  */
 
+
 $api = new \onepay\qrcode\OnePay(array());
 $api->pay();

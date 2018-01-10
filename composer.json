@@ -1,0 +1,15 @@
+{
+  "name": "ngonhan2k5/onepay-qrcode-sdk-php",
+  "description": "",
+  "minimum-stability": "stable",
+  "license": "proprietary",
+  "authors": [
+    {
+      "name": "author's name",
+      "email": "nognhan2k5@gmail.com"
+    }
+  ],
+  "autoload": {
+    "psr-4": { "onepay\\": "src/onpay/qrcode" }
+  }
+}
