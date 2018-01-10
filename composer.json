@@ -10,6 +10,6 @@
     }
   ],
   "autoload": {
-    "psr-4": { "onepay\\": "src/onpay/qrcode" }
+    "psr-4": { "onepay\\": "src/onepay/qrcode" }
   }
 }
