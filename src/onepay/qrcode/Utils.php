@@ -11,15 +11,22 @@ namespace onepay\qrcode;
 
 class Utils
 {
+    static $logConfig = array(
+        'filePath' => false,
+        'debug' => false
+    );
     /**
      * @param $para
      * @return array
      */
-    static function paraFilter($para) {
+    private static function paraFilter($para) {
+
         $para_filter = array();
-        while (list ($key, $val) = each ($para)) {
-            if($key == "sign" || $key == "sign_type" || $val == "")continue;
-            else	$para_filter[$key] = $para[$key];
+        foreach($para as $key => $val) {
+            if($key == "sign" || $key == "sign_type" || $val === null)
+                continue;
+            else
+                $para_filter[$key] = $para[$key];
         }
         return $para_filter;
     }
@@ -28,7 +35,7 @@ class Utils
      * @param $para
      * @return mixed
      */
-    static function argSort($para) {
+    private static function argSort($para) {
         ksort($para);
         reset($para);
         return $para;
@@ -38,14 +45,13 @@ class Utils
      * @param $para
      * @return bool|string
      */
-    static function createLinkstring($para) {
+    private static function createLinkstring($para) {
         $arg  = "";
         foreach ($para as $key => $val) {
             $arg.=$key."=".$val."&";
         }
-        $arg = substr($arg,0,strlen($arg)-2);
-        if(get_magic_quotes_gpc()){$arg = stripslashes($arg);}
-        return $arg;
+        $arg = rtrim($arg, "&");
+        return '{'.$arg.'}';
     }
 
     /**
@@ -55,22 +61,27 @@ class Utils
      * @param string $input_charset
      * @return mixed
      */
-    static function getHttpResponsePOST($url, $cacert_url, $para, $input_charset = '') {
-        if (trim($input_charset) != '') {
-            $url = $url."_input_charset=".$input_charset;
-        }
+    static function getHttpResponsePOST($url, $data) {
+        self::logResult('REQUEST:'.$url);
+        $dataJson = json_encode($data);
+        self::logResult('DATA');
+        self::logResult($dataJson);
         $curl = curl_init($url);
-        curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, true);
-        curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, 2);
-        curl_setopt($curl, CURLOPT_CAINFO,$cacert_url);
-        curl_setopt($curl, CURLOPT_HEADER, 0 );
+//        curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, true);
+//        curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, 2);
+//        curl_setopt($curl, CURLOPT_CAINFO,$cacert_url);
         curl_setopt($curl,CURLOPT_RETURNTRANSFER, 1);
         curl_setopt($curl,CURLOPT_POST,true);
-        curl_setopt($curl,CURLOPT_POSTFIELDS,$para);
-        $responseText = curl_exec($curl);
-        //var_dump( curl_error($curl) );
+        curl_setopt($curl, CURLOPT_HTTPHEADER, array(
+                'Content-Type: application/json',
+                'Content-Length: ' . strlen($dataJson))
+        );
+        curl_setopt($curl,CURLOPT_POSTFIELDS,$dataJson);
+        $response = curl_exec($curl);
+        self::logResult($response);
+        //self::logResult(curl_error($curl), self::$debug);
         curl_close($curl);
-        return $responseText;
+        return $response;
     }
 
     /**
@@ -83,12 +94,98 @@ class Utils
 
     /**
      * @param string $word
+     * @param $filePath
+     * @param bool $debug
      */
-    static function logResult($word='') {
-        $fp = fopen("log.txt","a");
-        flock($fp, LOCK_EX) ;
-        fwrite($fp,"Time：".strftime("%Y%m%d%H%M%S",time())."\n".$word."\n");
-        flock($fp, LOCK_UN);
-        fclose($fp);
+    static function logResult($data='', $config=null) {
+        $config = ($config==null)?self::$logConfig: $config;
+        if (is_array($data)){
+            $data = print_r($data, true);
+        }
+        $logContent = strftime("%Y/%m/%d-%H:%M:%S", time()) . " " . $data . "\n";
+        if ($config['logTarget']) {
+            $fp = fopen($config['logTarget'], "a");
+            flock($fp, LOCK_EX);
+            fwrite($fp, $logContent);
+            flock($fp, LOCK_UN);
+            fclose($fp);
+        }
+        if ($config['debug'] || !$config['logTarget']){
+            echo $logContent;
+        }
+    }
+
+    private static function toSignData($data){
+        $filted = self::paraFilter($data);
+        $sorted = self::argSort($filted);
+        $toSign = self::createLinkstring($sorted);
+        self::logResult('queryString:'.$toSign);
+        return strtoupper(hash('sha256', $toSign));
+    }
+
+    /**
+     * @param $data
+     * @param $private_key
+     * @return string
+     */
+    public static function rsaSign($data, $private_key) {
+        $res=openssl_get_privatekey($private_key);
+        if($res) openssl_sign($data, $sign,$res);
+        else exit("The format of your private_key is incorrect!");
+        openssl_free_key($res);
+
+        $sign = base64_encode(base64_encode($sign));
+        return $sign;
+    }
+
+    /**
+     * @param $data
+     * @param $public_key
+     * @param $sign
+     * @return bool
+     */
+    public static function rsaVerify($data, $public_key, $sign)  {
+        $res=openssl_get_publickey($public_key);
+        if($res)
+            $result = (bool)openssl_verify($data, base64_decode(base64_decode($sign)), $res);
+        else
+            exit("The format of your public_key is incorrect!");
+        openssl_free_key($res);
+        return $result;
+    }
+
+    /**
+     * @param $data
+     * @param $privateKeyPath
+     * @return string
+     */
+    static function signSendData($reqData, $privateKeyPath){
+        $toSignData = self::toSignData($reqData);
+        self::logResult('PrivateKey:'.$privateKeyPath);
+        $privateKey = file_get_contents($privateKeyPath);
+        $reqData['sign'] = self::rsaSign($toSignData, $privateKey);
+        return $reqData;
+    }
+
+    /**
+     * @param $resData
+     * @param $publicKeyPath
+     * @param bool $deep: =true: check data, =false: only check certificated remote server
+     * @return bool
+     */
+    static function verifyReceiveData($resData, $publicKeyPath, $deep=false){
+        $sign = $resData['sign'];
+        $toSignData = self::toSignData($resData);
+        self::logResult('PublicKey:'.$publicKeyPath);
+        $publicKey = file_get_contents($publicKeyPath);
+        return self::rsaVerify($toSignData, $publicKey, $sign);
+    }
+
+    /**
+     * @param $keysString
+     */
+    static function arrayCopy($srcArray, $keysString){
+        $keys = explode(',', $keysString);
+        return array_filter($srcArray, function($key) use ($keys){return in_array($key, $keys);}, ARRAY_FILTER_USE_KEY);
     }
 }
