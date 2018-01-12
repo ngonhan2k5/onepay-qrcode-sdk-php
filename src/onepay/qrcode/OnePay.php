@@ -21,8 +21,9 @@ class OnePay
         'locale' => 'JAPAN',
         'timeZone' => 'p9',
         'currencyCode' => 'JPY',
-        'payType' => '01', //Ali
         'appVersion' => 'linux-ali-1.0.0',
+
+        'payType' => '01',
 
         'privateKeyPath' => 'private.pem',
         'publicKeyPath' => 'public.pem',
@@ -40,7 +41,7 @@ class OnePay
 
     public function __construct($config=array()){
         $this->_config = array_merge($this->_defaultConfig, $config);
-        $this->_commonBodyRequestParams = Utils::arrayCopy($this->_config, 'locale,merchantCode,branchCode,terminalCode,timeZone,currencyCode,payType,appVersion');
+        $this->_commonBodyRequestParams = Utils::arrayCopy($this->_config, 'locale,merchantCode,branchCode,terminalCode,timeZone,currencyCode,appVersion');
         Utils::$logConfig = Utils::arrayCopy($this->_config, 'logTarget,debug');
 
     }
@@ -60,6 +61,15 @@ class OnePay
         return implode('', $tokenParams);
     }
 
+    private function transNonce($funcName, $handleId){
+        $map = array (
+            'pay' => 'PAY',
+            'refund' => 'RFD',
+            'reverse' => 'RVS',
+        );
+        return $map[$funcName].'-'.$handleId.'-'.Utils::getMillisecond();
+    }
+
     /**
      * Create url for api call
      * @param $funcName
@@ -71,43 +81,99 @@ class OnePay
     }
 
     /**
-     * @param $amount
-     * @param int $validTime in minutes
+     * Prepare param, url and post
+     * @param $funcName
+     * @param $sendParams
+     * @return mixed
      */
-    public function pay($amount=0, $transNonce='12ibu5aiVcKdp5RxkhJA3', $validTime=2160){
-        $url = $this->createUrl(__FUNCTION__);
-        $sendParams = array(
+    private function request($funcName, $sendParams){
+        $url = $this->createUrl($funcName);
+        $this->log('REQUEST:'.$url);
+
+        $_sendParams = array_merge($this->_commonBodyRequestParams, $sendParams);
+        $_sendParams = Utils::signSendData($_sendParams, $this->_config['privateKeyPath']);
+
+        $this->log('DATA');
+        $this->log($_sendParams);
+
+        return Utils::getHttpResponsePOST($url, $_sendParams);
+    }
+
+    /**
+     * @param int $amount
+     * @param string $transNonce
+     * @param int $validTime
+     * @param string $payType = 01 ALI
+     */
+    public function pay($amount=0, $validTime=2160, $handleId='ALI0001'){
+
+        return $this->request(__FUNCTION__, array(
+            'payType' => $this->_config['payType'],
             'amount' => $amount,
-            'transNonce' => $transNonce,
+            'transNonce' => $this->transNonce(__FUNCTION__, $handleId),
             'validTime' => $validTime,
             'notifyUrl' => "http://api.test.pay.net/atinterface/receive_notify.htm"
-        );
-        $sendParams = array_merge($sendParams, $this->_commonBodyRequestParams);
-        $sendParams = Utils::signSendData($sendParams, $this->_config['privateKeyPath']);
-        return Utils::getHttpResponsePOST($url, $sendParams);
-    }
-
-    public function refund(){
+        ));
 
     }
 
-    public function reverse(){
+    public function refund($amount, $orderId, $handleId='ALI0001'){
+
+        return $this->request(__FUNCTION__, array(
+            'refundAmount' => $amount,
+            'transNonce' => $this->transNonce(__FUNCTION__, $handleId),
+            'orderId' => $orderId,
+            'refundReason' => 'test',
+        ));
 
     }
 
-    public function orderQuery(){
+    public function reverse($orderId){
+
+        return $this->request(__FUNCTION__, array(
+            'orderId' => $orderId,
+            'currencyCode' => null, // remove param
+        ));
 
     }
 
-    public function orderDetailQuery(){
+    public function orderQuery($orderId=''){
+        return $this->request(__FUNCTION__, array(
+//            'payType' => $this->_config['payType'],
+            'orderId' => $orderId,
+//            'qryToken' => '10028222269100101201801121515752575144',
+//                'merchantCode' => '',
+//                'userCode' => 'bax03777wwdaf4kgwzif6055',
+//                'start' => 1,
+//                'limit' => 7,
+//                'startDate' => '20180110',
+//                'endDate' => '20180115',
+//                'payType' => '',
+            'currencyCode' => null, // remove param
 
+        ));
     }
 
-    public function confirm(){
+    public function orderDetailQuery($orderId, $transType='01'){
+        return $this->request(__FUNCTION__, array(
+            'orderId' => $orderId,
+            'transType' => $transType,
+//            'transSerial' => 'J1AP20180112200052632q6a',
+//            'qryToken' => 'J1AP20180112200052632q6a',
+            'isQueryOnly' => '0'
+        ));
+    }
 
+    public function confirm($orderId){
+        return $this->request(__FUNCTION__, array(
+            'orderId' => $orderId,
+//            'transSerial' => 'J1AP20180112200052632q6a',
+//            'qryToken' => 'J1AP20180112200052632q6a',
+            'isQueryOnly' => '0'
+        ));
     }
 
     private function log($logData){
-        Utils::logResult($logData, array($this->_config['logTarget'], $this->_config['debug']));
+        Utils::logResult($logData, Utils::arrayCopy($this->_config, 'logTarget,debug'));
     }
 }

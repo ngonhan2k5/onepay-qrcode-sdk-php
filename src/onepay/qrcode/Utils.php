@@ -22,10 +22,15 @@ class Utils
 
         $para_filter = array();
         foreach($para as $key => $val) {
-            if($key == "sign" || $key == "sign_type" || $val === null)
-                continue;
-            else
-                $para_filter[$key] = $para[$key];
+            if (is_array($val)){
+                $para_filter[$key] = self::paraFilter($para[$key]);
+            }else{
+                if($key == "sign" || $key == "sign_type" || $val === null || $val === "")
+                    continue;
+                else
+                    $para_filter[$key] = $para[$key];
+            }
+
         }
         return $para_filter;
     }
@@ -37,6 +42,11 @@ class Utils
     private static function argSort($para) {
         ksort($para);
         reset($para);
+        foreach ($para as $key => $val) {
+            if (is_array($val)) {
+                $para[$key] = self::argSort($val);
+            }
+        }
         return $para;
     }
 
@@ -47,7 +57,11 @@ class Utils
     private static function createLinkstring($para) {
         $arg  = "";
         foreach ($para as $key => $val) {
-            $arg.=$key."=".$val."&";
+            if (is_array($val)) {
+                $arg .= $key . "=". self::createLinkstring($val). "&";
+            }else{
+                $arg .= $key . "=" . $val . "&";
+            }
         }
         $arg = rtrim($arg, "&");
         return '{'.$arg.'}';
@@ -61,10 +75,7 @@ class Utils
      * @return mixed
      */
     static function getHttpResponsePOST($url, $data) {
-        self::logResult('REQUEST:'.$url);
         $dataJson = json_encode($data);
-        self::logResult('DATA');
-        self::logResult($dataJson);
         $curl = curl_init($url);
 //        curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, true);
 //        curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, 2);
@@ -77,8 +88,15 @@ class Utils
         );
         curl_setopt($curl,CURLOPT_POSTFIELDS,$dataJson);
         $response = curl_exec($curl);
-        self::logResult($response);
-        //self::logResult(curl_error($curl), self::$debug);
+
+        self::logResult('========== RESPONSE:=============');
+
+        if ($response===false) {
+            self::logResult(json_decode(curl_error($curl), true));
+        }else {
+            $response = json_decode($response, true);
+            self::logResult($response);
+        }
         curl_close($curl);
         return $response;
     }
@@ -118,7 +136,7 @@ class Utils
         $filted = self::paraFilter($data);
         $sorted = self::argSort($filted);
         $toSign = self::createLinkstring($sorted);
-        self::logResult('queryString:'.$toSign);
+        self::logResult('querytoSign:'.$toSign);
         return strtoupper(hash('sha256', $toSign));
     }
 
@@ -128,6 +146,11 @@ class Utils
      * @return string
      */
     public static function rsaSign($data, $private_key) {
+        $private_key=str_replace("-----BEGIN RSA PRIVATE KEY-----","",$private_key);
+        $private_key=str_replace("-----END RSA PRIVATE KEY-----","",$private_key);
+        $private_key=str_replace("\n","",$private_key);
+        $private_key="-----BEGIN RSA PRIVATE KEY-----".PHP_EOL .wordwrap($private_key, 64, "\n", true)
+            . PHP_EOL."-----END RSA PRIVATE KEY-----";
         $res=openssl_get_privatekey($private_key);
         if($res) openssl_sign($data, $sign,$res);
         else exit("The format of your private_key is incorrect!");
@@ -144,6 +167,11 @@ class Utils
      * @return bool
      */
     public static function rsaVerify($data, $public_key, $sign)  {
+        $public_key=str_replace("-----BEGIN PUBLIC KEY-----","",$public_key);
+        $public_key=str_replace("-----END PUBLIC KEY-----","",$public_key);
+        $public_key=str_replace("\n","",$public_key);
+        $public_key='-----BEGIN PUBLIC KEY-----'.PHP_EOL.wordwrap($public_key, 64, "\n", true)
+            .PHP_EOL.'-----END PUBLIC KEY-----';
         $res=openssl_get_publickey($public_key);
         if($res)
             $result = (bool)openssl_verify($data, base64_decode(base64_decode($sign)), $res);
@@ -159,10 +187,13 @@ class Utils
      * @return string
      */
     static function signSendData($reqData, $privateKeyPath){
+
         $toSignData = self::toSignData($reqData);
         self::logResult('PrivateKey:'.$privateKeyPath);
         $privateKey = file_get_contents($privateKeyPath);
         $reqData['sign'] = self::rsaSign($toSignData, $privateKey);
+        //var_dump($reqData['sign']);
+
         return $reqData;
     }
 

@@ -17,4 +17,11 @@ $config = array(
 );
 
 $api = new \onepay\qrcode\OnePay($config);
-var_dump($api->pay(1));
+$result = $api->pay(1);
+$oderId = $result['data']['result']['orderId'];
+$api->refund(1, $oderId);
+$api->reverse($oderId);
+$api->orderQuery($oderId);
+$api->orderDetailQuery($oderId);
+$api->confirm($oderId);
+
