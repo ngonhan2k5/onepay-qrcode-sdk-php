@@ -18,14 +18,15 @@ class Utils
      * @param $para
      * @return array
      */
-    private static function paraFilter($para) {
+    private static function paraFilter($para, $conditionFunc) {
 
         $para_filter = array();
         foreach($para as $key => $val) {
             if (is_array($val)){
                 $para_filter[$key] = self::paraFilter($para[$key]);
             }else{
-                if($key == "sign" || $key == "sign_type" || $val === null || $val === "")
+
+                if(call_user_func($conditionFunc,$key, $val))
                     continue;
                 else
                     $para_filter[$key] = $para[$key];
@@ -132,8 +133,11 @@ class Utils
         }
     }
 
+
     private static function toSignData($data){
-        $filted = self::paraFilter($data);
+        $filted = self::paraFilter($data, function($key, $val){
+            return ($key == "sign" || $key == "sign_type" || $val === null || $val === "");
+        });
         $sorted = self::argSort($filted);
         $toSign = self::createLinkstring($sorted);
         self::logResult('querytoSign:'.$toSign);
@@ -182,9 +186,9 @@ class Utils
     }
 
     /**
-     * @param $data
+     * @param $reqData
      * @param $privateKeyPath
-     * @return string
+     * @return mixed
      */
     static function signSendData($reqData, $privateKeyPath){
 
@@ -194,7 +198,9 @@ class Utils
         $reqData['sign'] = self::rsaSign($toSignData, $privateKey);
         //var_dump($reqData['sign']);
 
-        return $reqData;
+        return self::paraFilter($reqData, function ($k, $v){
+            return $v === null;
+        });
     }
 
     /**

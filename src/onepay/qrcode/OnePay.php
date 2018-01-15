@@ -142,13 +142,15 @@ class OnePay
 //            'payType' => $this->_config['payType'],
             'orderId' => $orderId,
 //            'qryToken' => '10028222269100101201801121515752575144',
-//                'merchantCode' => '',
+                'merchantCode' => null,
 //                'userCode' => 'bax03777wwdaf4kgwzif6055',
 //                'start' => 1,
 //                'limit' => 7,
 //                'startDate' => '20180110',
 //                'endDate' => '20180115',
 //                'payType' => '',
+            'timeZone' => null,
+            'appVersion' => null,
             'currencyCode' => null, // remove param
 
         ));
