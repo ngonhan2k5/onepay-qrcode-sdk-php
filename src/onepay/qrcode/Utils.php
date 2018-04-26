@@ -221,7 +221,7 @@ class Utils
      * @param $keysString
      */
     static function arrayCopy($srcArray, $keysString){
-        $keys = explode(',', $keysString);
-        return array_filter($srcArray, function($key) use ($keys){return in_array($key, $keys);}, ARRAY_FILTER_USE_KEY);
+        $allowed = explode(',', $keysString);
+        return array_intersect_key($srcArray, array_flip($allowed));
     }
 }
